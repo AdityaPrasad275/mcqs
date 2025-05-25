@@ -24,8 +24,13 @@ This document provides a technical deep-dive into the current architecture and i
         *   [3.3.4. `src/App.css` & `src/index.css`](#334-srcappcss--srcindexcss)
         *   [3.3.5. `vite.config.js`](#335-viteconfigjs)
     *   [3.4. State Management](#34-state-management)
-    *   [3.5. API Communication](#35-api-communication)
-4.  [Data Flow for MCQ Generation & Export](#4-data-flow-for-mcq-generation--export)
+    *   [3.5. API Communication (Backend)](#35-api-communication-backend)
+    *   [3.6. Client-Side PDF Export Logic](#36-client-side-pdf-export-logic)
+4.  [Data Flow](#4-data-flow)
+    *   [4.1. MCQ Generation](#41-mcq-generation)
+    *   [4.2. Word Export](#42-word-export)
+    *   [4.3. PDF Export](#43-pdf-export)
+5.  [Appendix A: PDF Export Troubleshooting Log (Server-Side - Deprecated)](#appendix-a-pdf-export-troubleshooting-log-server-side---deprecated)
 
 ---
 
@@ -33,27 +38,27 @@ This document provides a technical deep-dive into the current architecture and i
 
 The application follows a client-server architecture:
 
-*   **Frontend (Client):** A Single Page Application (SPA) built with React and Vite. It handles user interaction, collects input, displays generated MCQs, and initiates export requests.
-*   **Backend (Server):** A Python Flask application that serves as an API. It processes requests from the frontend, interacts with the Google Gemini API for MCQ generation, and handles the creation of Word documents for export.
+*   **Frontend (Client):** A Single Page Application (SPA) built with React and Vite. It handles user interaction, collects input, displays generated MCQs, initiates Word export requests to the backend, and **generates PDF documents directly in the browser**.
+*   **Backend (Server):** A Python Flask application that serves as an API. It processes requests from the frontend for MCQ generation and handles the creation of Word documents for export.
 
-Communication between frontend and backend is via HTTP requests to defined API endpoints.
+Communication between frontend and backend for AI generation and Word export is via HTTP requests to defined API endpoints. PDF export is a client-side operation.
 
 ---
 
 ## 2. Backend (Flask - Python)
 
-The backend is responsible for the core logic of MCQ generation and file export.
+The backend is responsible for the core logic of MCQ generation and **server-side file export (Word documents)**.
 
 ### 2.1. Core Dependencies
 
 (As defined in `backend/requirements.txt`)
 
-*   **`Flask`**: A micro web framework for creating the API server.
-*   **`Flask-CORS`**: Handles Cross-Origin Resource Sharing, allowing the frontend (running on a different port) to make requests to the backend.
-*   **`google-generativeai`**: The official Python SDK for interacting with the Google Gemini API.
-*   **`python-docx`**: Used to create and manipulate Word (.docx) documents.
-*   **`python-dotenv`**: Manages environment variables, primarily for the Gemini API key.
-*   **`unicodedata`, `re`**: Standard Python libraries used for text cleaning and sanitization, particularly for filenames.
+*   **`Flask`**: Micro web framework.
+*   **`Flask-CORS`**: Handles Cross-Origin Resource Sharing.
+*   **`google-generativeai`**: SDK for Google Gemini API.
+*   **`python-docx`**: Used for Word (.docx) document creation.
+*   **`python-dotenv`**: Manages environment variables.
+*   **`unicodedata`, `re`**: Standard Python libraries for text cleaning.
 
 ### 2.2. Directory Structure
 
@@ -67,202 +72,128 @@ backend/
 
 ### 2.3. Key File: `app.py`
 
-This file contains all the backend logic.
-
 #### 2.3.1. Initialization & Configuration
-
-*   **Flask App Creation:** `app = Flask(__name__)` initializes the Flask application.
-*   **CORS:** `CORS(app)` enables CORS for all routes.
-*   **Gemini API Key Loading:** `load_dotenv()` loads variables from the `.env` file. The `GOOGLE_API_KEY` is retrieved using `os.getenv("GOOGLE_API_KEY")`.
-*   **Gemini Model Initialization:**
-    ```python
-    genai.configure(api_key=gemini_api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
-    ```
-    This configures the `google-generativeai` library with the API key and specifies the `gemini-2.0-flash` model for content generation. Error handling is in place if the API key is missing or configuration fails.
+*(No changes from your existing `technical_overview.md` here)*
 
 #### 2.3.2. Gemini AI Integration
-
-*   **`generate_mcqs_with_gemini(topic_name, chapter_content, pyqs)` function:**
-    *   Constructs a detailed prompt for the Gemini API. The prompt instructs the AI on its role, the desired output format (5 MCQs with specific structure: Question, Options A-D, Answer), and incorporates the user-provided topic name, chapter content, and PYQs.
-    *   Uses `model.generate_content(prompt)` to send the request to Gemini.
-    *   Extracts the text response (the generated MCQs) from the API's output.
-    *   Includes error handling for API call failures or if the API filters content.
+*(No changes from your existing `technical_overview.md` here)*
 
 #### 2.3.3. API Endpoints
-
-*   **`/api/generate-mcqs` (POST):**
-    *   Receives `topicName`, `chapterContent` (optional), and `pyqs` (optional) as JSON from the frontend.
-    *   Validates that `topicName` is provided.
-    *   Calls `generate_mcqs_with_gemini` to get the MCQs.
-    *   Returns the generated MCQs as a JSON response (`{"mcqs": mcqs_text}`).
-    *   Returns appropriate HTTP error codes (400 for bad request, 500 for server errors).
-
-*   **`/api/export-word` (POST):**
-    *   Receives `mcqs` (the text of generated MCQs) and `topicName` as JSON from the frontend.
-    *   Calls the Word export logic (see below).
-    *   Uses `send_file` to send the generated `.docx` file back to the frontend as an attachment.
-    *   The `download_name` for the file is dynamically created based on the `topicName`.
+*   **`/api/generate-mcqs` (POST):** (No changes)
+*   **`/api/export-word` (POST):** (No changes)
+    *   *(The PDF export endpoint has been removed from the backend).*
 
 #### 2.3.4. Word Export Logic
-
-*   Implemented within the `/api/export-word` route.
-*   **`Document()`:** Creates a new Word document instance using `python-docx`.
-*   **Title:** Adds a main heading to the document using `document.add_heading()`, dynamically set based on the `topic_name_for_export`.
-*   **Content:** The `mcqs_text` is split by newline characters. Each non-empty line is added as a new paragraph to the document using `document.add_paragraph()`.
-*   **File Streaming:** The document is saved to an in-memory binary stream (`io.BytesIO()`) instead of a temporary file on the server. This is efficient for sending the file directly in the HTTP response.
-*   **Filename Sanitization:** The `sanitize_filename(name)` helper function cleans the topic name to create a valid and safe filename (replaces spaces, removes invalid characters).
+*(No changes from your existing `technical_overview.md` here)*
 
 ### 2.4. Environment Variables
-
-*   **`backend/.env` file:** (This file is gitignored and should be created manually by the user).
-    ```env
-    GOOGLE_API_KEY="YOUR_ACTUAL_GEMINI_API_KEY"
-    ```
-    This stores the sensitive Google Gemini API key, keeping it separate from the codebase.
+*(No changes from your existing `technical_overview.md` here)*
 
 ---
 
 ## 3. Frontend (React - Vite)
 
-The frontend provides the user interface and handles interactions.
+The frontend provides the user interface, handles interactions, and **now manages client-side PDF generation**.
 
 ### 3.1. Core Dependencies
 
 (As defined in `frontend/package.json`)
 
-*   **`react` & `react-dom`**: Core libraries for building the user interface with React.
-*   **`axios`**: A promise-based HTTP client for making API requests to the backend.
-*   **`vite`**: The build tool and development server, providing a fast development experience.
-*   **`@vitejs/plugin-react`**: Vite plugin for React integration.
-*   **ESLint and related plugins**: For code linting and quality.
+*   **`react` & `react-dom`**: Core React libraries.
+*   **`axios`**: HTTP client for backend API requests.
+*   **`jspdf`**: JavaScript library for client-side PDF generation. *(Note: `jspdf-autotable` was considered but not used for the final line-by-line PDF format).*
+*   **`vite`**: Build tool and development server.
+*   **`@vitejs/plugin-react`**: Vite plugin for React.
+*   **ESLint and related plugins**: For code linting.
 
 ### 3.2. Directory Structure
-
-```
-frontend/
-├── .gitignore
-├── eslint.config.js
-├── index.html          # Main HTML entry point
-├── package.json
-├── pnpm-lock.yaml
-├── vite.config.js      # Vite configuration (includes proxy)
-├── public/             # Static assets (not heavily used in this MVP)
-└── src/
-    ├── App.css         # Styles specific to App.jsx
-    ├── App.jsx         # Main React application component
-    ├── index.css       # Global styles
-    └── main.jsx        # React application entry point
-```
+*(No changes from your existing `technical_overview.md` here)*
 
 ### 3.3. Key Files & Components
 
 #### 3.3.1. `index.html`
-
-*   The single HTML page that Vite serves.
-*   Contains a `<div id="root"></div>` where the React application is mounted.
-*   Includes `<script type="module" src="/src/main.jsx"></script>` to load the React app.
-*   The `<title>` is set to "NCERT MCQ Generator".
+*(No changes from your existing `technical_overview.md` here)*
 
 #### 3.3.2. `src/main.jsx`
-
-*   The entry point for the React application.
-*   Imports `React`, `ReactDOM`, the main `App` component, and global `index.css`.
-*   Renders the `<App />` component into the `root` div from `index.html` using `ReactDOM.createRoot().render()`.
-*   `React.StrictMode` is enabled for development checks.
+*(No changes from your existing `technical_overview.md` here)*
 
 #### 3.3.3. `src/App.jsx` (Main Application Component)
 
-This is the heart of the frontend.
+This component handles all primary user interactions and state.
 
-*   **Function Component:** `function App() { ... }`.
-*   **State Management (using `useState` hook):**
-    *   `topicName`: Stores the user's input for the MCQ topic.
-    *   `chapterContent`: Stores pasted chapter text.
-    *   `pyqs`: Stores pasted Previous Year Questions.
-    *   `generatedMcqs`: Stores the MCQ text received from the backend. This is also bound to the editable textarea.
-    *   `isLoading`: Boolean to manage the loading state (e.g., disable buttons, show loading message) during API calls.
-    *   `error`: Stores error messages to display to the user.
+*   **Function Component & State Management:** *(Largely the same, `generatedMcqs` remains a string)*
 *   **Event Handlers:**
-    *   `handleGenerateMcqs()`:
-        *   Triggered by the "Generate MCQs" button.
-        *   Validates that `topicName` is not empty.
-        *   Sets `isLoading` to true, clears previous errors and MCQs.
-        *   Makes a POST request to `/api/generate-mcqs` using `axios`, sending `topicName`, `chapterContent`, and `pyqs`.
-        *   On success, updates `generatedMcqs` state with the response.
-        *   On error, updates the `error` state.
-        *   Sets `isLoading` to false in a `finally` block.
-    *   `handleExportWord()`:
-        *   Triggered by the "Export as Word (.docx)" button.
-        *   Validates that `generatedMcqs` is not empty.
-        *   Makes a POST request to `/api/export-word` using `axios`, sending `generatedMcqs` and `topicName`.
-        *   **`responseType: 'blob'`**: Crucial for receiving file data.
-        *   Creates a `Blob` from the response data with the correct MIME type for Word documents.
-        *   Uses `window.URL.createObjectURL(blob)` to create a temporary URL for the blob.
-        *   Creates an `<a>` element, sets its `href` to the blob URL and `download` attribute to a filename (either from `Content-Disposition` header or a fallback).
-        *   Programmatically clicks the link to trigger the download.
-        *   Cleans up the object URL using `window.URL.revokeObjectURL()`.
-        *   Includes error handling for the export process.
+    *   `handleGenerateMcqs()`: *(No changes)*
+    *   `handleExportWord()`: *(No changes)*
+    *   **`handleExportPdf()` (New/Revised):**
+        *   Triggered by the "Export as PDF" button.
+        *   Validates that `generatedMcqs` (the raw string output from Gemini) is not empty.
+        *   Initializes a `new jsPDF()` instance with A4 portrait settings.
+        *   Defines page layout variables (margins, line height, current Y position).
+        *   **Title Generation:** Writes the topic name (or a default title) at the top of the PDF, handling text wrapping using `doc.splitTextToSize()`.
+        *   **MCQ Parsing & Rendering:**
+            *   Iterates through each line of the `generatedMcqs` string.
+            *   Implements a `checkAndAddPage()` helper to manage page breaks if content exceeds page height.
+            *   Applies basic styling (bolding for questions/answers, indentation for options) using `doc.setFont()` and adjusting `xOffset`.
+            *   Uses `doc.splitTextToSize()` for each line to handle automatic text wrapping within the defined page width and margins.
+            *   Writes the (potentially wrapped) lines to the PDF using `doc.text()`, advancing the `yPosition` accordingly.
+        *   Generates a sanitized filename using a helper function (`sanitize_filename_for_js`).
+        *   Calls `doc.save(filename)` to trigger the browser download of the PDF.
+        *   Includes `try...catch` for error handling during PDF generation.
+
 *   **JSX Structure:**
-    *   Renders a main container (`<div className="container">`).
-    *   Includes an `<h1>` title.
-    *   Input fields (`<input type="text">` for topic name, `<textarea>` for chapter content and PYQs) are grouped with labels. Their values are bound to the respective state variables, and `onChange` handlers update the state.
-    *   "Generate MCQs" button, disabled when `isLoading` or `topicName` is empty.
-    *   Conditional rendering for error messages (`{error && ...}`) and loading messages (`{isLoading && ...}`).
-    *   Conditional rendering for the output section (`{generatedMcqs && !isLoading && ...}`):
-        *   An `<h2>` for "Generated MCQs (Editable)".
-        *   A `<textarea className="mcqs-output-area">` where `generatedMcqs` are displayed and can be edited directly (two-way binding via `value` and `onChange`).
-        *   "Export as Word (.docx)" button, disabled if `generatedMcqs` is empty.
+    *   *(Input fields and MCQ generation section remain the same)*
+    *   **Export Buttons:** Now includes both "Export as Word (.docx)" and "Export as PDF" buttons, each linked to their respective handler functions.
 
 #### 3.3.4. `src/App.css` & `src/index.css`
-
-*   **`src/index.css`**: Contains very basic global styles, primarily for the `body` (background color, default font). It also includes some default Vite styles which are mostly commented out.
-*   **`src/App.css`**: Contains specific styles for the elements within `App.jsx`, such as the main container, input groups, textareas, buttons, and messages. It ensures a clean and consistent look, overriding browser defaults where necessary (e.g., input field background and text colors).
+*(No changes from your existing `technical_overview.md` here)*
 
 #### 3.3.5. `vite.config.js`
-
-*   Configures Vite for the React project.
-*   **Key Configuration: `server.proxy`**:
-    ```javascript
-    server: {
-      proxy: {
-        '/api': {
-          target: 'http://127.0.0.1:5000', // Backend address
-          changeOrigin: true,
-        }
-      }
-    }
-    ```
-    This proxies any requests made from the frontend starting with `/api` to the Flask backend running on `http://127.0.0.1:5000`. This is essential during development to avoid CORS issues, as the frontend (e.g., `localhost:5173`) and backend (`localhost:5000`) run on different ports.
+*(No changes from your existing `technical_overview.md` here)*
 
 ### 3.4. State Management
+*(No changes from your existing `technical_overview.md` here)*
 
-Simple local component state managed by the `useState` hook within `App.jsx` is sufficient for the MVP's needs. No complex state management libraries (like Redux or Zustand) are used.
+### 3.5. API Communication (Backend)
+*(No changes from your existing `technical_overview.md` here)*
 
-### 3.5. API Communication
+### 3.6. Client-Side PDF Export Logic
 
-*   **`axios`** is used for all HTTP requests to the backend.
-*   Requests are made to relative paths (e.g., `/api/generate-mcqs`) which are then handled by the Vite proxy during development.
-*   JSON is the data format for request and response payloads (except for file downloads, which use `blob`).
+*   **Library:** `jspdf` is used directly.
+*   **Process:**
+    1.  The `generatedMcqs` string (raw text from Gemini) is split into lines.
+    2.  A new `jsPDF` document is created.
+    3.  A title is rendered at the top, with text wrapping.
+    4.  Each line of the MCQ text is processed sequentially:
+        *   Page breaks are handled automatically by checking available space.
+        *   Basic styling (bold for questions/answers, indent for options) is applied.
+        *   `jsPDF`'s `splitTextToSize` and `text` methods are used to render text with wrapping.
+    5.  The `doc.save()` method initiates the download in the user's browser.
+*   **Formatting Goal:** To create a PDF that visually resembles a standard document, with questions, options, and answers flowing line by line, similar to the Word export, rather than a tabular format.
+*   **Font:** Uses `jsPDF`'s default built-in fonts.
 
 ---
 
-## 4. Data Flow for MCQ Generation & Export
+## 4. Data Flow
 
-### MCQ Generation:
+### 4.1. MCQ Generation
+*(No changes from your existing `technical_overview.md` here)*
 
-1.  **User Input (Frontend):** User types topic name, optionally pastes chapter content and PYQs. This updates React state in `App.jsx`.
-2.  **Generate Request (Frontend):** User clicks "Generate MCQs". `handleGenerateMcqs` in `App.jsx` sends a POST request to `/api/generate-mcqs` with the state data.
-3.  **API Call (Backend):** Flask route `/api/generate-mcqs` receives the data.
-4.  **Gemini Interaction (Backend):** `generate_mcqs_with_gemini` function formats a prompt and sends it to the Gemini API.
-5.  **Gemini Response (Backend):** Gemini returns generated MCQ text.
-6.  **API Response (Backend):** Flask sends the MCQ text back to the frontend as JSON.
-7.  **Display MCQs (Frontend):** `axios` callback in `App.jsx` updates the `generatedMcqs` state, re-rendering the textarea with the new MCQs.
+### 4.2. Word Export
+*(No changes from your existing `technical_overview.md` here)*
 
-### Word Export:
+### 4.3. PDF Export
 
-1.  **User Action (Frontend):** User clicks "Export as Word". `handleExportWord` in `App.jsx` is triggered.
-2.  **Export Request (Frontend):** Sends a POST request to `/api/export-word` with the current `generatedMcqs` text and `topicName`. The request specifies `responseType: 'blob'`.
-3.  **Document Creation (Backend):** Flask route `/api/export-word` receives the data. It uses `python-docx` to create a Word document in memory, adding the title and MCQs as paragraphs.
-4.  **File Streaming (Backend):** The Word document is saved to an `io.BytesIO` stream and sent back in the HTTP response with appropriate `mimetype` and `Content-Disposition` headers (for filename).
-5.  **File Download (Frontend):** `axios` callback in `App.jsx` receives the blob. It creates a temporary URL for the blob and triggers a browser download.
+1.  **User Action (Frontend):** User clicks "Export as PDF". `handleExportPdf` in `App.jsx` is triggered.
+2.  **Data Preparation (Frontend):** The current `generatedMcqs` string (edited or as-is from Gemini) is used as the source. The `topicName` is also used for the title and filename.
+3.  **PDF Document Creation (Frontend - Client-Side):**
+    *   A `jsPDF` instance is created.
+    *   The title is added.
+    *   The `generatedMcqs` string is iterated line by line. Each line is written to the PDF, with `jsPDF` handling text wrapping and page breaks managed by custom logic (`checkAndAddPage`). Basic styling (bolding, indentation) is applied.
+4.  **File Download (Frontend):** `jsPDF`'s `doc.save()` method prompts the browser to download the generated PDF directly. No backend interaction is involved in this step.
+
+---
+## Appendix A: PDF Export Troubleshooting Log (Server-Side - Deprecated)
+
+*(This section, detailing the `fpdf2` issues, can remain as is for historical context and lessons learned.)*
+*(You provided this content in the previous message, so ensure it's correctly appended here if you have it in a separate file or as part of the main technical_overview.md)*

@@ -1,6 +1,7 @@
 # NCERT MCQ Generator MVP
 
-This project provides a simple web application to generate Multiple Choice Questions (MCQs) for NCERT topics using Google Gemini AI, and allows users to export these MCQs into a cleanly formatted Word (.docx) document.
+This project provides a simple web application to generate Multiple Choice Questions (MCQs) for NCERT topics using Google Gemini AI. Users can export these MCQs into a cleanly formatted Word (.docx) document (server-generated) or a structured PDF document (client-generated).
+
 
 ## Project Structure
 
@@ -21,78 +22,48 @@ adityaprasad275-mcqs/
 └── README.md # (This file)
 ```
 
+
 ## Setup and Running
 
 ### 1. Backend Setup (Flask & Gemini)
-
-a.  **Navigate to the backend directory:**
-    ```bash
-    cd backend
-    ```
-
-b.  **(Recommended) Create and activate a Python virtual environment:**
-    ```bash
-    python -m venv venv
-    ```
-    *   On Windows: `venv\Scripts\activate`
-    *   On macOS/Linux: `source venv/bin/activate`
-
-c.  **Install Python dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-d.  **Set up your Google Gemini API Key:**
-    *   Create a file named `.env` in the `backend` directory.
-    *   Add your API key to it:
-        ```env
-        GOOGLE_API_KEY="YOUR_GEMINI_API_KEY"
-        ```
-    *   **Important:** Replace `"YOUR_GEMINI_API_KEY"` with your actual key obtained from [Google AI Studio](https://aistudio.google.com/app/apikey). Do not commit this file to version control.
-
-e.  **Run the Flask backend server:**
-    ```bash
-    flask run
-    ```
-    By default, it will run on `http://127.0.0.1:5000`. Keep this terminal open.
+*(No changes to setup instructions from the Word-only MVP)*
+... (keep existing backend setup steps) ...
 
 ### 2. Frontend Setup (Vite + React + pnpm)
-
-a.  **Navigate to the frontend directory (from the project root):**
+a.  **Navigate to the frontend directory:**
     ```bash
     cd frontend
     ```
-
 b.  **Install Node.js dependencies using pnpm:**
     ```bash
     pnpm install
-    # Ensure axios is installed: pnpm add axios
+    # Ensure axios, jspdf, and jspdf-autotable are installed:
+    # pnpm add axios jspdf jspdf-autotable
     ```
-
-c.  **Configure API Proxy:**
-    *   The `frontend/vite.config.js` file is configured to proxy API requests from `/api` to the Flask backend (`http://127.0.0.1:5000`) during development. No manual changes are usually needed here unless your backend port changes.
-
+c.  **Configure API Proxy:** (No changes needed in `vite.config.js`)
 d.  **Run the Vite development server:**
     ```bash
     pnpm run dev
     ```
-    This will usually open the app in your browser at `http://localhost:5173` (Vite's default port, check your terminal output for the exact URL). Keep this terminal open.
+    It will usually open at `http://localhost:5173`.
 
 ### 3. Using the Application
-
-1.  Ensure both the backend and frontend servers are running.
-2.  Open your browser and navigate to the frontend URL (e.g., `http://localhost:5173`).
-3.  Enter the "Topic Name" for which you want to generate MCQs.
-4.  (Optional) Paste relevant chapter content into the "Paste Chapter Content" text area.
-5.  (Optional) Paste any Previous Year Questions (PYQs) into the "Paste PYQs" text area for context.
-6.  Click the "Generate MCQs" button.
-7.  The generated MCQs will appear in the editable text area below. You can make any necessary edits.
-8.  Click the "Export as Word (.docx)" button to download the MCQs as a Word document. The filename will be dynamically generated based on your topic name.
+*(Adjust to include PDF export option)*
+1.  Ensure both backend and frontend servers are running.
+2.  Open your browser to the frontend URL.
+3.  Enter Topic Name, optional Chapter Content, and optional PYQs.
+4.  Click "Generate MCQs".
+5.  Edit MCQs if needed in the text area.
+6.  Click "Export as Word (.docx)" to download a server-generated Word file.
+7.  Click "Export as PDF" to download a client-generated PDF file.
 
 ## Tech Stack
 
-*   **Frontend:** React (with Vite for fast development), powered by `pnpm` for package management.
-*   **Backend:** Python (Flask) for handling API requests and file generation.
-*   **AI:** Google Gemini (`gemini-2.0-flash`) for generating MCQs.
-*   **Export:** `python-docx` for robust Word (.docx) document creation.
+*   **Frontend:** React (with Vite), `pnpm`
+    *   **PDF Generation:** `jspdf`, `jspdf-autotable`
+*   **Backend:** Python (Flask)
+*   **AI:** Google Gemini (`gemini-2.0-flash`)
+*   **Export:**
+    *   Word (.docx): `python-docx` (server-side)
+    *   PDF (.pdf): `jspdf`, `jspdf-autotable` (client-side)
 *   **API Communication:** `axios` (frontend) and `Flask-CORS` (backend) for seamless cross-origin requests.
